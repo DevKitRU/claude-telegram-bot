@@ -208,6 +208,23 @@ ls ~/.claude/projects/-home-ubuntu/memory/
 
 Это норма. `KillMode=process` нужен чтобы при рестарте бота не убивать уже запущенные claude-subprocess'ы (иначе long-running ответы оборвутся). Варнинг можно игнорировать.
 
+### Бот завис — в Telegram «⏳ Думаю...» висит часами
+
+`KillMode=process` имеет обратную сторону: если бот упал посередине `claude -p`, subprocess может осиротеть и висеть в памяти. Посмотреть сколько накопилось:
+
+```bash
+ps aux | grep -E 'claude.*stream-json' | grep -v grep
+```
+
+Если их 5+ или они давно (`stime` старее пары часов) — убить:
+
+```bash
+pkill -f 'claude.*stream-json'
+sudo systemctl restart claude-telegram-bot
+```
+
+Если накапливаются регулярно — это симптом другого бага (таймаутов не хватает, Claude зависает, VPS душится по памяти). Проверь `journalctl -u claude-telegram-bot --since "1 hour ago"` на паттерн.
+
 ---
 
 ## Обновление

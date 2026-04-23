@@ -14,6 +14,7 @@ import sqlite3
 import asyncio
 import logging
 import shutil
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -113,6 +114,9 @@ log = logging.getLogger("claude-telegram-bot")
 def db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    # WAL для конкурентного чтения/записи (несколько админов, одновременный
+    # on_callback + on_message не блокируют друг друга).
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS state (
             chat_id INTEGER PRIMARY KEY,
@@ -191,7 +195,14 @@ def is_admin(update: Update) -> bool:
 
 
 async def deny(update: Update):
-    await update.message.reply_text("⛔ Доступ запрещён.")
+    """Безопасное сообщение об отказе — работает и для обычных чатов, и для callback'ов."""
+    if update.message:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+    elif update.callback_query:
+        try:
+            await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
+        except Exception:
+            pass
 
 
 # ——— Запуск Claude CLI ———
@@ -217,8 +228,18 @@ async def run_claude(
 
     log.info("claude run cwd=%s session=%s", project_path, session_id)
     try:
-        # Чистим ANTHROPIC_API_KEY из env — Claude CLI использует свою OAuth-сессию
-        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        # ВАЖНО: передаём Claude минимальный env. По дефолту systemd EnvironmentFile
+        # подставляет ВСЁ из .env включая BOT_TOKEN и ADMIN_IDS — Claude c
+        # --dangerously-skip-permissions может прочитать их через `Bash: env`
+        # и выдать в чат. Поэтому явный whitelist переменных которые ему реально нужны.
+        SAFE_ENV_KEYS = {
+            "PATH", "HOME", "USER", "LOGNAME", "SHELL",
+            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ",
+            "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME",
+            "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
+            "https_proxy", "http_proxy", "no_proxy",
+        }
+        env = {k: v for k, v in os.environ.items() if k in SAFE_ENV_KEYS}
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=project_path,
@@ -373,11 +394,25 @@ async def cmd_cd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     target = " ".join(args).strip()
-    path = PROJECT_ALIASES.get(target, target)
+    # ВАЖНО: только whitelisted пути из config/projects.json.
+    # Произвольные пути запрещены — иначе /cd /etc + --dangerously-skip-permissions даст
+    # Claude root-read на VPS. Чтобы разрешить новый путь — добавь в config/projects.json.
+    if target in PROJECT_ALIASES:
+        path = PROJECT_ALIASES[target]
+    elif target == DEFAULT_PROJECT or Path(target).resolve() == Path(DEFAULT_PROJECT).resolve():
+        path = DEFAULT_PROJECT
+    else:
+        await update.message.reply_text(
+            f"❌ Проект <code>{target}</code> не в whitelist.\n\n"
+            f"Доступные алиасы: {', '.join(PROJECT_ALIASES.keys())}\n\n"
+            f"Чтобы добавить новый путь — пропиши в <code>config/projects.json</code> и рестартни бот.",
+            parse_mode="HTML",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
     if not Path(path).is_dir():
         await update.message.reply_text(
-            f"❌ Директории нет: <code>{path}</code>\n\n"
-            f"Доступные алиасы: {', '.join(PROJECT_ALIASES.keys())}",
+            f"❌ Директории нет: <code>{path}</code> (алиас есть в конфиге, но путь битый)",
             parse_mode="HTML",
             reply_markup=MAIN_KEYBOARD,
         )
@@ -517,13 +552,18 @@ async def process_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE, pro
     progress_msg = await update.message.reply_text(f"⏳ Думаю в <code>{Path(project).name}</code>...", parse_mode="HTML")
 
     tool_lines: list[str] = []
+    last_edit_ts = 0.0  # debounce — Telegram rate-limit edit одного сообщения: 1/сек
 
     async def on_event(kind: str, payload: str):
+        nonlocal last_edit_ts
         if kind == "tool":
             tool_lines.append(f"🔧 {payload}")
-            # Обновляем прогресс-сообщение (но не чаще раза в секунду по факту)
+            now = time.monotonic()
+            if now - last_edit_ts < 1.2:
+                return  # пропускаем — отрисуем со следующим tool или в финале
+            last_edit_ts = now
             try:
-                preview = "\n".join(tool_lines[-6:])  # последние 6 тулов
+                preview = "\n".join(tool_lines[-6:])
                 await progress_msg.edit_text(f"⏳ Работаю...\n\n{preview}", parse_mode=None)
             except Exception:
                 pass
