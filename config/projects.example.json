@@ -1,0 +1,10 @@
+{
+    "_comment": "Скопируй в projects.json, впиши реальные пути. Алиасы удобно использовать в команде /cd home, /cd webapp и т.д. Claude Code будет запускаться с cwd=<path>, соответствующая папка памяти (~/.claude/projects/<hash>/memory/) подтянется автоматически.",
+    "default": "/home/USER",
+    "aliases": {
+        "home": "/home/USER",
+        "webapp": "/home/USER/projects/my-webapp",
+        "bots": "/home/USER/projects/telegram-bots",
+        "memory": "/home/USER/claude-memory"
+    }
+}

@@ -1,0 +1,31 @@
+# Секреты — первым делом
+.env
+.env.*
+!.env.example
+
+# Пользовательский конфиг проектов (может раскрывать внутренние пути)
+config/projects.json
+
+# Данные рантайма
+data/
+*.db
+*.db-journal
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.Python
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

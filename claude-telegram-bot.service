@@ -1,0 +1,20 @@
+[Unit]
+Description=Claude Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+# Замени USER и пути на свои
+User=ubuntu
+WorkingDirectory=/home/ubuntu/claude-telegram-bot
+EnvironmentFile=/home/ubuntu/claude-telegram-bot/.env
+ExecStart=/home/ubuntu/claude-telegram-bot/.venv/bin/python /home/ubuntu/claude-telegram-bot/bot.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# Не убивать долгоживущие claude-subprocess'ы при рестарте бота
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
