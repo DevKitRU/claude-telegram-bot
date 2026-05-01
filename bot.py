@@ -519,12 +519,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     q = update.callback_query
     data = q.data or ""
+    chat_id = q.message.chat.id if q.message and q.message.chat else q.from_user.id
 
     if data.startswith("cd:"):
         alias = data[3:]
-        path = PROJECT_ALIASES.get(alias, alias)
+        if alias not in PROJECT_ALIASES:
+            await q.edit_message_text(f"❌ Неизвестный проект: {alias}")
+            await q.answer()
+            return
+        path = PROJECT_ALIASES[alias]
         if Path(path).is_dir():
-            set_state(q.from_user.id, None, path)
+            set_state(chat_id, None, path)
             await q.edit_message_text(
                 f"✅ Переключился на <code>{path}</code>\nСессия обнулена.",
                 parse_mode="HTML",
@@ -533,7 +538,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"❌ Директории нет: {path}")
     elif data.startswith("resume:"):
         sid = data[7:]
-        text = resume_text(q.from_user.id, sid)
+        text = resume_text(chat_id, sid)
         await q.edit_message_text(text, parse_mode="HTML")
 
     try:
