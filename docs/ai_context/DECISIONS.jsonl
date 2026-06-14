@@ -1,0 +1,2 @@
+{"date":"YYYY-MM-DD","decision":"Use docs/ai_context as the project context layer.","reason":"New AI-agent sessions need a small map, danger zones, verification steps, and session continuity.","status":"accepted"}
+

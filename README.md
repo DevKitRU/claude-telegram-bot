@@ -19,6 +19,14 @@ Telegram-бот для работы с [Claude Code](https://claude.com/claude-c
 
 ---
 
+## AI context для Codex / Claude
+
+Если открываешь этот репозиторий через AI-агента, начни с [AGENTS.md](AGENTS.md), затем с [docs/ai_context/PROJECT_MAP.md](docs/ai_context/PROJECT_MAP.md).
+
+Там коротко описано, где runtime (`bot.py`), где установка на VPS, где опасные зоны: `.env`, `BOT_TOKEN`, реальные Telegram IDs, runtime SQLite и `--dangerously-skip-permissions`.
+
+---
+
 ## Архитектура
 
 ```
